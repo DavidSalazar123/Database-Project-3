@@ -62,13 +62,84 @@ BufMgr::~BufMgr() {
     delete [] bufPool;
 }
 
+/*
+Allocates a free frame using the clock algorithm; if necessary, writing a dirty page back to disk. 
+Returns BUFFEREXCEEDED if all buffer frames are pinned, 
+UNIXERR if the call to the I/O layer returned an error when a dirty page was being written to disk and OK otherwise.  
+This private method will get called by the readPage() and allocPage() methods described below.
 
+Make sure that if the buffer frame allocated has a valid page in it, that you remove the appropriate entry from the hash table.
+*/
 const Status BufMgr::allocBuf(int & frame) 
 {
+    // If all buffer frames are pinned, return BUFFEREXCEEDED
+    bool allPinned = true;
+    for (int i = 0; i < numBufs; i++)
+    {
+        if (bufTable[i].pinCnt == 0)
+        {
+            allPinned = false;
+            break;
+        }
+    }
+
+    // ALl the buffer frames are pinned (pinCnt > 0)
+    if (allPinned == true)
+    {
+        return BUFFEREXCEEDED;
+    }
     
+    // Because of the advanceClock() function, we will always find a victim frame
+    // This means that we will always reset to the front of the "clock" with the hand
+    while (true)
+    {
+        File* file = bufTable[clockHand].file;
+        // If valid bit = false, invoke Set() on the frame to set it up properly
+        if (bufTable[clockHand].valid == false)
+        {
+            int pageNo = bufTable[clockHand].pageNo;
+            bufTable[clockHand].Set(file, pageNo);
+            frame = clockHand;
+            return OK;
+        }
+
+        // refbit == true and valid == true, so advance the clock
+        else if(bufTable[clockHand].valid == true && bufTable[clockHand].refbit == true) 
+        {
+            bufTable[clockHand].refbit = false;
+            advanceClock();
+        }
+        else if (bufTable[clockHand].pinCnt > 0)
+        {
+            advanceClock();
+        }
+        else if (bufTable[clockHand].dirty == true)
+        {
+            // Flush the page to disk
+            Status status = flushFile(file);
+
+            // Status status = bufTable[clockHand].file->writePage(bufTable[clockHand].pageNo, &bufPool[clockHand]);
+            if (status != OK)
+            {
+                return UNIXERR;
+            }
+
+            // Remove the page
+            int pageNo = bufTable[clockHand].pageNo;
+            bufTable[clockHand].Set(file, pageNo);
+            frame = clockHand;
+            return OK;
+        }
+        else
+        {
+            int pageNo = bufTable[clockHand].pageNo;
+            bufTable[clockHand].Set(file, pageNo);
+            frame = clockHand;
+            return OK;
+        }    
+    }
 }
 
-// NOTE: Double check the if statments. Might return something other than HASHNOTFOUND or OK, then what should we do?
 const Status BufMgr::readPage(File* file, const int PageNo, Page*& page)
 {
     //frameNo is set correctly if lookup was succesful
@@ -136,14 +207,8 @@ const Status BufMgr::unPinPage(File* file, const int PageNo, const bool dirty)
     // 1: First check if page is in the buffer pool by calling the lookup function to get frame number
     Status status = hashTable->lookup(file, PageNo, frameNo);
 
-    // Case 1: Page is not in the buffer pool.  
-    if (status == HASHNOTFOUND)
-    {
-        return status; // Status is not OK, return the status
-    }
-
     //Case 2) Page is in the buffer pool.  
-    else if (status == OK)
+    if (status == OK)
     {
         //Verify that the pinCnt > 0 to confirm we can decrease
         if (bufTable[frameNo].pinCnt <= 0) // Note: <= 0 might be safer to do, instead of == 0
@@ -163,22 +228,44 @@ const Status BufMgr::unPinPage(File* file, const int PageNo, const bool dirty)
         //Return OK
         return status;
     }
-    // Case 3) Some other error occurred
+    // Case 2) Some other error occurred (HASHNOTFOUND, UNIXERR, HASHTBLERROR)
     else
     {
         return status;
     }
 }
-
+ 
+// The method returns both the page number of the newly allocated page to the caller via the pageNo parameter and a pointer to the buffer frame allocated for the page via the page parameter. 
 const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page) 
 {
+    //Allocate a page in the file
+    Status status = file->allocatePage(pageNo);
 
+    // We could not allocate a page since the file is full
+    if (status != OK)
+    {
+        return status;
+    }
 
+    //Allocate a buffer frame
+    int frameNo = 0;
+    status = allocBuf(frameNo);
+    if (status != OK) // If allocBuf() fails, return the error status (Can be either HASHTBLERROR or BUFFEREXCEEDED or etc.)
+    {
+        return status; // If status is not OK, return the status
+    }
 
+    //Insert the page into the hashtable
+    status = hashTable->insert(file, pageNo, frameNo);
+    if (status != OK)
+    {
+        return status;
+    }
 
-
-
-
+    //Set() on the frame to set it up properly
+    bufTable[frameNo].Set(file, pageNo); // Sets pinCnt to 1
+    page = &bufPool[frameNo]; // Return a pointer to the frame containing the page via the page parameter
+    return status; // Return OK
 }
 
 const Status BufMgr::disposePage(File* file, const int pageNo) 
