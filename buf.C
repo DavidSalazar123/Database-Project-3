@@ -65,7 +65,7 @@ BufMgr::~BufMgr() {
 
 const Status BufMgr::allocBuf(int & frame) 
 {
-
+    
 }
 
 // NOTE: Double check the if statments. Might return something other than HASHNOTFOUND or OK, then what should we do?
@@ -128,15 +128,46 @@ const Status BufMgr::readPage(File* file, const int PageNo, Page*& page)
     }
 }
 
-
-const Status BufMgr::unPinPage(File* file, const int PageNo, 
-			       const bool dirty) 
+const Status BufMgr::unPinPage(File* file, const int PageNo, const bool dirty) 
 {
+    //frameNo is set correctly if lookup was succesful
+    int frameNo = 0;
 
+    // 1: First check if page is in the buffer pool by calling the lookup function to get frame number
+    Status status = hashTable->lookup(file, PageNo, frameNo);
 
+    // Case 1: Page is not in the buffer pool.  
+    if (status == HASHNOTFOUND)
+    {
+        return status; // Status is not OK, return the status
+    }
 
+    //Case 2) Page is in the buffer pool.  
+    else if (status == OK)
+    {
+        //Verify that the pinCnt > 0 to confirm we can decrease
+        if (bufTable[frameNo].pinCnt <= 0) // Note: <= 0 might be safer to do, instead of == 0
+        {
+            return PAGENOTPINNED;
+        }
 
+        //Actually decrease the pinCnt
+        bufTable[frameNo].pinCnt--;
 
+        //If dirty == true, set the dirty bit
+        if (dirty == true)
+        {
+            bufTable[frameNo].dirty = true;
+        }
+
+        //Return OK
+        return status;
+    }
+    // Case 3) Some other error occurred
+    else
+    {
+        return status;
+    }
 }
 
 const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page) 
