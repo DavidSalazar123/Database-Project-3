@@ -8,6 +8,7 @@
 #include "page.h"
 #include "buf.h"
 
+
 #define ASSERT(c)  { if (!(c)) { \
 		       cerr << "At line " << __LINE__ << ":" << endl << "  "; \
                        cerr << "This condition should hold: " #c << endl; \
@@ -18,7 +19,6 @@
 //----------------------------------------
 // Constructor of the class BufMgr
 //----------------------------------------
-
 BufMgr::BufMgr(const int bufs)
 {
     numBufs = bufs;
@@ -66,21 +66,66 @@ BufMgr::~BufMgr() {
 const Status BufMgr::allocBuf(int & frame) 
 {
 
-
-
-
-
-
 }
 
-	
+// NOTE: Double check the if statments. Might return something other than HASHNOTFOUND or OK, then what should we do?
 const Status BufMgr::readPage(File* file, const int PageNo, Page*& page)
 {
+    //frameNo is set correctly if lookup was succesful
+    int frameNo = 0;
 
+    // 1: First check if page is in the buffer pool by calling the lookup function to get frame number
+    Status status = hashTable->lookup(file, PageNo, frameNo);
 
+    // Case 1: Page is not in the buffer pool.  
+    if (status == HASHNOTFOUND)
+    {
+        //Allocate a buffer frame
+        status = allocBuf(frameNo);
+        if (status != OK) // If allocBuf() fails, return the error status (Can be either HASHTBLERROR or BUFFEREXCEEDED or etc.)
+        {
+            return status; // If status is not OK, return the status
+        }
 
+        //Read the page from disk into the buffer pool frame
+        status = file->readPage(PageNo, &bufPool[frameNo]);
+        if (status != OK)
+        {
+            return status;
+        }
 
+        //Insert the page into the hashtable
+        status = hashTable->insert(file, PageNo, frameNo);
+        if (status != OK)
+        {
+            return status;
+        }
 
+        //Set() on the frame to set it up properly
+        bufTable[frameNo].Set(file, PageNo); // Sets pinCnt to 1
+        page = &bufPool[frameNo]; // Return a pointer to the frame containing the page via the page parameter
+        return status; // Return OK
+    }
+
+    //Case 2) Page is in the buffer pool.  
+    else if (status == OK)
+    {
+        //Set the appropriate refbit
+        bufTable[frameNo].refbit = true;
+
+        //Increment the pinCnt for page
+        bufTable[frameNo].pinCnt++;
+
+        //Return a pointer to the frame containing the page via the page parameter
+        page = &bufPool[frameNo];
+        
+        return status;
+    }
+    // Case 3) Some other error occurred
+    else
+    {
+        return status;
+    }
 }
 
 
