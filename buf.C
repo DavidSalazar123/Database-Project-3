@@ -118,7 +118,9 @@ const Status BufMgr::allocBuf(int & frame)
             // Flush the page to disk
             Status status = flushFile(file);
 
+            //Save this incase the flushFile Method does not work at all
             // Status status = bufTable[clockHand].file->writePage(bufTable[clockHand].pageNo, &bufPool[clockHand]);
+            // NOTE: NOTE: Double check the if statments. Might return something other than HASHNOTFOUND or OK, then what should we do
             if (status != OK)
             {
                 return UNIXERR;
@@ -165,6 +167,8 @@ const Status BufMgr::readPage(File* file, const int PageNo, Page*& page)
             return status;
         }
 
+        // NOTE: Not sure whether or not to return the actual page number and pointer or simply just the status of the method because the return type is just status??
+        // NOTE: Side Note: Make sure your returning the correct errors when you need to.
         //Insert the page into the hashtable
         status = hashTable->insert(file, PageNo, frameNo);
         if (status != OK)
@@ -249,6 +253,8 @@ const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page)
 
     //Allocate a buffer frame
     int frameNo = 0;
+    // TESTING ERROR: This is where we believe is the root problem is! There is a Error: Unix errorUnix error: File exists error and it's for test4
+    
     status = allocBuf(frameNo);
     if (status != OK) // If allocBuf() fails, return the error status (Can be either HASHTBLERROR or BUFFEREXCEEDED or etc.)
     {

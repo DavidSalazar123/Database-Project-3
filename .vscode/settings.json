@@ -5,6 +5,7 @@
         "buf.C": "cpp",
         "bufHash.C": "cpp",
         "db.C": "cpp",
-        "error.C": "cpp"
+        "error.C": "cpp",
+        "iostream": "cpp"
     }
 }
