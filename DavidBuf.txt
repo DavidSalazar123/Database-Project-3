@@ -1,0 +1,68 @@
+// If all buffer frames are pinned, return BUFFEREXCEEDED
+    bool allPinned = true;
+    for (int i = 0; i < numBufs; i++)
+    {
+        if (bufTable[i].pinCnt == 0)
+        {
+            allPinned = false;
+            break;
+        }
+    }
+
+    // ALl the buffer frames are pinned (pinCnt > 0)
+    if (allPinned == true)
+    {
+        return BUFFEREXCEEDED;
+    }
+    
+    // Because of the advanceClock() function, we will always find a victim frame
+    // This means that we will always reset to the front of the "clock" with the hand
+    while (true)
+    {
+        File* file = bufTable[clockHand].file;
+        // If valid bit = false, invoke Set() on the frame to set it up properly
+        if (bufTable[clockHand].valid == false)
+        {
+            int pageNo = bufTable[clockHand].pageNo;
+            bufTable[clockHand].Set(file, pageNo);
+            frame = clockHand;
+            return OK;
+        }
+
+        // refbit == true and valid == true, so advance the clock
+        else if(bufTable[clockHand].valid == true && bufTable[clockHand].refbit == true) 
+        {
+            bufTable[clockHand].refbit = false;
+            advanceClock();
+        }
+        else if (bufTable[clockHand].pinCnt > 0)
+        {
+            advanceClock();
+        }
+        else if (bufTable[clockHand].dirty == true)
+        {
+            // Flush the page to disk
+            Status status = flushFile(file);
+
+            //Save this incase the flushFile Method does not work at all
+            // Status status = bufTable[clockHand].file->writePage(bufTable[clockHand].pageNo, &bufPool[clockHand]);
+            // NOTE: NOTE: Double check the if statments. Might return something other than HASHNOTFOUND or OK, then what should we do
+            if (status != OK)
+            {
+                return UNIXERR;
+            }
+
+            // Remove the page
+            int pageNo = bufTable[clockHand].pageNo;
+            bufTable[clockHand].Set(file, pageNo);
+            frame = clockHand;
+            return OK;
+        }
+        else
+        {
+            int pageNo = bufTable[clockHand].pageNo;
+            bufTable[clockHand].Set(file, pageNo);
+            frame = clockHand;
+            return OK;
+        }    
+    }

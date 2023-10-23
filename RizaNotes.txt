@@ -1,0 +1,12 @@
+I added the abs(value) in BufHash
+
+I made the code more efficent, double check with david to make sure I didnt remove anything
+
+Make sure we still basically have the same things, just mine is more efficent (same if checks same return values when needed )
+
+Remove the comments on top of the methods
+
+Maybe submit if your feeling confident
+
+
+Check anhai piazza post, he updated the hash function, and I changed it on our hash function, so we should be good
