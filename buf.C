@@ -1,3 +1,19 @@
+/*
+ * -----------------------------------------------------------------------------
+ * File name: buf.C
+ * -----------------------------------------------------------------------------
+ * Created by: 
+ * David Salazar - 9084824631
+ * Viktor Sakman -  9083266065
+ * Riza Kaya - 9081992647
+ * -----------------------------------------------------------------------------
+ * Purpose: 
+ * This file implements the core functionalitiees of a Buffer Manager which 
+ * handles the stroage of database pages in memory. The Buffer Manager uses
+ * a Clock Algorithm for page replacement.
+ * -----------------------------------------------------------------------------
+*/
+
 #include <memory.h>
 #include <unistd.h>
 #include <errno.h>
@@ -66,14 +82,24 @@ BufMgr::~BufMgr()
     delete[] bufPool;
 }
 
-/*
-Allocates a free frame using the clock algorithm; if necessary, writing a dirty page back to disk.
-Returns BUFFEREXCEEDED if all buffer frames are pinned,
-UNIXERR if the call to the I/O layer returned an error when a dirty page was being written to disk and OK otherwise.
-This private method will get called by the readPage() and allocPage() methods described below.
-
-Make sure that if the buffer frame allocated has a valid page in it, that you remove the appropriate entry from the hash table.
-*/
+/**
+ * @brief 
+ * Allocates a buffer frame using the Clock algorithm.
+ * 
+ * This method implements the Clock page-replacement algorithm to allocate a buffer frame. 
+ * It searches for an unused frame in the buffer pool (Only loops through 2 times) 
+ * and, if necessary, writes a dirty frame back to disk before replacing it. 
+ * If all frames are pinned, it returns an error.
+ *
+ * @param frame Reference to an integer where the index of the allocated buffer 
+ *              frame will be stored upon method success.
+ * 
+ * @return 
+ * Status indicating the outcome of the operation. It returns OK if a buffer frame 
+ * is successfully allocated. UNIXERR if the call to the I/O layer returned an error 
+ * when a dirty page was being written to disk.
+ * Returns BUFFEREXCEEDED if all frames are currently pinned and cannot be allocated.
+ **/
 const Status BufMgr::allocBuf(int &frame)
 {
     int numTries = 0;
@@ -119,15 +145,21 @@ const Status BufMgr::allocBuf(int &frame)
     return BUFFEREXCEEDED; // If we get here, return BUFFEREXCEEDED (all buffer frames are pinned)
 }
 
-/*
-First check whether the page is already in the buffer pool by invoking the lookup() method on the hashtable to get a frame number.  There are two cases to be handled depending on the outcome of the lookup() call:
-
-Case 1) Page is not in the buffer pool.  Call allocBuf() to allocate a buffer frame and then call the method file->readPage() to read the page from disk into the buffer pool frame. Next, insert the page into the hashtable. Finally, invoke Set() on the frame to set it up properly. Set() will leave the pinCnt for the page set to 1.  Return a pointer to the frame containing the page via the page parameter.
-
-Case 2)  Page is in the buffer pool.  In this case set the appropriate refbit, increment the pinCnt for the page, and then return a pointer to the frame containing the page via the page parameter.
-
-Returns OK if no errors occurred, UNIXERR if a Unix error occurred, BUFFEREXCEEDED if all buffer frames are pinned, HASHTBLERROR if a hash table error occurred.
-*/
+/**
+ * @brief 
+ * Reads a page from the file into the buffer pool
+ *
+ * @param file Pointer to File from which the page will be read
+ * @param PageNo Page number to read the file from
+ * @param page Reference to the page with a pointer 
+ * 
+ * @return  
+ * Status indicating the outcome of the operation. 
+ * OK if we are able to read a page from the file
+ * UNIXERR if the call to the I/O layer returned an error 
+ * BUFFEREXCEEDED if all frames are currently pinned
+ * HASHTBLERROR if hash table error occured
+ **/
 const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
 {
     // Lookup the page in the hashtable and assign the frame number to frameNo
@@ -161,9 +193,20 @@ const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
     return status; // Return OK
 }
 
-/*
-Decrements the pinCnt of the frame containing (file, PageNo) and, if dirty == true, sets the dirty bit.  Returns OK if no errors occurred, HASHNOTFOUND if the page is not in the buffer pool hash table, PAGENOTPINNED if the pin count is already 0.
-*/
+/**
+ * @brief 
+ * Decrements the pinCnt of the frame that contains the file and Page Number
+ *
+ * @param file Pointer to File from which the page will be read
+ * @param PageNo Page number to read the file from
+ * @param dirty If the tuple was altered/updated
+ * 
+ * @return  
+ * Status indicating the outcome of the operation. 
+ * OK if we are able to read a page from the file
+ * HASHNOTFOUND if page is not in the buffer pool hash table
+ * PAGENOTPINNED if the pin count is already 0
+ **/
 const Status BufMgr::unPinPage(File *file, const int PageNo, const bool dirty)
 {
     // Check if page is in the buffer pool hash table and get the frame number
@@ -183,10 +226,21 @@ const Status BufMgr::unPinPage(File *file, const int PageNo, const bool dirty)
     return OK;
 }
 
-/*
-This call is kind of weird.  The first step is to to allocate an empty page in the specified file by invoking the file->allocatePage() method. This method will return the page number of the newly allocated page.  Then allocBuf() is called to obtain a buffer pool frame.  Next, an entry is inserted into the hash table and Set() is invoked on the frame to set it up properly.  The method returns both the page number of the newly allocated page to the caller via the pageNo parameter and a pointer to the buffer frame allocated for the page via the page parameter. Returns OK if no errors occurred, UNIXERR if a Unix error occurred, BUFFEREXCEEDED if all buffer frames are pinned and HASHTBLERROR if a hash table error occurred.
-*/
-// The method returns both the page number of the newly allocated page to the caller via the pageNo parameter and a pointer to the buffer frame allocated for the page via the page parameter.
+/**
+ * @brief 
+ * Allocates a frame into the buffer pool at the page number
+ *
+ * @param file Pointer to File from which the page will be read
+ * @param pageNo Page number to read the file from
+ * @param page The page used in the buffer pool
+ * 
+ * @return  
+ * Status indicating the outcome of the operation. 
+ * OK if we are able to read a page from the file
+ * UNIXERR if a Unix error occurred
+ * BUFFEREXCEEDED if all buffer frames are pinned
+ * HASHTBLERROR if a hash table error occurred
+ **/
 const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page)
 {
     // Allocate a page in the file
